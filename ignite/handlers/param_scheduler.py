@@ -857,7 +857,7 @@ class ConcatScheduler(ParamScheduler):
                     values = values + params
                 output.append(values)
 
-            objs = torch.load(cache_filepath.as_posix())
+            objs = torch.load(cache_filepath.as_posix(), weights_only=False)
             for i, s in enumerate(schedulers):
                 s.load_state_dict(objs[f"lr_scheduler_{i}"])
             optimizer.load_state_dict(objs["optimizer"])
