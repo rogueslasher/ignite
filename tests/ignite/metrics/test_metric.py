@@ -1469,6 +1469,53 @@ def test_access_to_metric_dunder_attributes():
     assert "value" in inspect.signature(metric).parameters.keys()
 
 
+def test_getattr_typo_reports_definition_site():
+    """__getattr__ should report where the bad attribute was accessed, not deep inside compute()."""
+
+    class ScalarMetric(Metric):
+        def reset(self):
+            self._value = 0.0
+
+        def update(self, output):
+            self._value += output
+
+        def compute(self):
+            return self._value
+
+    engine = Engine(lambda e, b: b)
+    m = ScalarMetric()
+
+    # Typo: .meen() instead of .mean()
+    bad = m.meen()
+    bad.attach(engine, "bad")
+
+    with pytest.raises(AttributeError, match=r"Metric result has no attribute 'meen'"):
+        engine.run([1.0, 2.0, 3.0], max_epochs=1)
+
+
+def test_getattr_valid_method_works():
+    """__getattr__ should still work correctly for valid tensor methods like .mean()."""
+
+    class ScalarMetric(Metric):
+        def reset(self):
+            self._sum = torch.tensor(0.0)
+
+        def update(self, output):
+            self._sum += output
+
+        def compute(self):
+            return self._sum
+
+    engine = Engine(lambda e, b: b)
+    m = ScalarMetric()
+
+    mean_metric = m.mean()
+    mean_metric.attach(engine, "mean")
+
+    state = engine.run([torch.tensor(1.0), torch.tensor(2.0), torch.tensor(3.0)], max_epochs=1)
+    assert state.metrics["mean"] == pytest.approx(6.0)
+
+
 def test_output_transform_type_check():
     y_pred = torch.tensor([[2.0], [-2.0]])
     y = torch.zeros(2)

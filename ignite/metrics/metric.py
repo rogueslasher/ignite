@@ -3,6 +3,7 @@ from collections import OrderedDict
 from collections.abc import Callable, Mapping, Sequence
 from functools import wraps
 from numbers import Number
+import traceback
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 import torch
@@ -793,8 +794,19 @@ class Metric(Serializable, metaclass=ABCMeta):
         if attr.startswith("__") and attr.endswith("__"):
             return object.__getattribute__(self, attr)
 
-        def fn(x: Metric, *args: Any, **kwargs: Any) -> Any:
-            return getattr(x, attr)(*args, **kwargs)
+        # Capture the call stack at definition time so that if the attribute
+        # turns out to be invalid (e.g. a typo), we can point the user back
+        # to where they wrote it instead of erroring deep inside compute().
+        definition_trace = "".join(traceback.format_stack()[:-1])
+
+        def fn(x: "Metric", *args: Any, **kwargs: Any) -> Any:
+            try:
+                return getattr(x, attr)(*args, **kwargs)
+            except AttributeError:
+                raise AttributeError(
+                    f"Metric result has no attribute '{attr}'. "
+                    f"Note: '{attr}' was accessed on the metric at:\n{definition_trace}"
+                ) from None
 
         def wrapper(*args: Any, **kwargs: Any) -> "MetricsLambda":
             return MetricsLambda(fn, self, *args, **kwargs)
